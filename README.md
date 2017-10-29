@@ -43,7 +43,7 @@ implementations of this typeclass in Scala.
   - 3.4 Intuition
   - 3.5 Utility functions
   - 3.6 See also
-- 4 Applicative
+- [4 Applicative](./contents/4_Applicative.md)
   - 4.1 Definition
   - 4.2 Laws
   - 4.3 Instances
