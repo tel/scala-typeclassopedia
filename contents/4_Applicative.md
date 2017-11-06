@@ -25,6 +25,8 @@ context. Here is the type class declaration for `Applicative`:
 trait Applicative[F[_]] extends Functor[F] {
   def pure[A](a: A): F[A]
   def ap[A, B](ff: F[A => B], fa: F[A]): F[B] // can exhibit poor inference
+
+  def map[A, B](f: A => B)(fa: F[A]): F[B] = ap(pure(f), fa)
 }
 ```
 
@@ -86,6 +88,8 @@ It says that mapping a `pure` function `g` over a context `x` is the same as fir
 injecting `g` into a context with `pure`, and then applying it to `x` with `ap`. In
 other words, we can decompose `map` into two more atomic operations: injection
 into a context, and application within a context.
+
+*Note*: we use this law directly to give us a default implementation for `map`.
 
 **Exercises**
 
