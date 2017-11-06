@@ -38,17 +38,18 @@ implementations of this typeclass in Scala.
 - [2 Introduction](./contents/2_Introduction.md)
 - [3 Functor](./contents/3_Functor.md)
 - [4 Applicative](./contents/4_Applicative.md)
-- 5 Monad
-- 6 MonadFail
-- 7 Monad transformers
-- 8 MonadFix
-- 9 Semigroup
-- 10 Monoid
-- 11 Failure and choice: Alternative, MonadPlus, ArrowPlus
-- 12 Foldable
-- 13 Traversable
-- 14 Category
-- 15 Arrow
-- 16 Comonad
-- 17 Acknowledgements
-- [18 About the author](./contents/18_About_the_author.md)
+- [5 Monad](./contents/5_Monad.md)
+- 6 TailRec
+- 7 MonadFail
+- 8 Monad transformers
+- 9 MonadFix
+- 10 Semigroup
+- 11 Monoid
+- 12 Failure and choice: Alternative, MonadPlus, ArrowPlus
+- 13 Foldable
+- 14 Traversable
+- 15 Category
+- 16 Arrow
+- 17 Comonad
+- 18 Acknowledgements
+- [19 About the author](./contents/18_About_the_author.md)

@@ -123,7 +123,7 @@ implicit object OptionMonad extends Monad[Option] {
 We can already get a bit of intuition as to what is going on here: if we build
 up a computation by chaining together a bunch of functions with `flatMap`, as soon
 as any one of them fails, the entire computation will fail (because
-`flatMap(None, f)` is `None` , no matter what `f` is). The entire computation
+`flatMap(None)(f)` is `None` , no matter what `f` is). The entire computation
 succeeds only if all the constituent functions individually succeed. So the
 `Option` monad models computations which may fail.
 
@@ -232,3 +232,348 @@ object Free {
   final case class Node[F[_], A](wrapped: F[Free[F, A]]) extends Free[F, A]
 }
 ```
+
+# 5.3 Intuition
+
+Let’s look more closely at the type of `flatMap`. The basic intuition is that
+it combines two computations into one larger computation. The first argument,
+`F[A]`, is the first computation. However, it would be boring if the second
+argument were just an `F[B]`; then there would be no way for the computations
+to interact with one another (actually, this is exactly the situation with
+`Applicative`).  So, the second argument to `flatMap` has type `A => F[B]`: a
+function of this type, given a result of the first computation, can produce a
+second computation to be run. In other words, `flatMap(x)(k)` is a computation
+which runs `x`, and then uses the result(s) of `x` to decide what computation
+to run second, using the output of the second computation as the result of the
+entire computation.
+
+Intuitively, it is this ability to use the output from previous computations to
+decide what computations to run next that makes `Monad` more powerful than
+`Applicative`. The structure of an `Applicative` computation is fixed, whereas
+the structure of a `Monad` computation can change based on intermediate
+results. This also means that parsers built using an `Applicative` interface
+can only parse context-free languages; in order to parse context-sensitive
+languages a `Monad` interface is needed.∗
+
+(*Note*: This is _slightly_ untrue. Through careful use of general recursion
+and laziness we can recursively construct infinite grammars, and hence
+`Applicative` (together with `Alternative`) is enough to parse any
+context-sensitive language with a finite alphabet. See [Parsing
+context-sensitive languages with
+Applicative](http://byorgey.wordpress.com/2012/01/05/parsing-context-sensitive-languages-with-applicative/).
+
+To see the increased power of `Monad` from a different point of view, let’s see
+what happens if we try to implement `flatMap` in terms of `map`, `pure`, and
+`ap`. We are given a value `x` of type `F[A]`, and a function `k` of type `A =>
+F[B]`, so the only thing we can do is apply `k` to `x`. We can’t apply it
+directly, of course; we have to use `map` to lift it over the `F`. But what is the
+type of `map(k)`? Well, it’s `F[A] => F[F[A]]`. So after we apply it to `x`, we are
+left with something of type `F[F[B]]`—but now we are stuck; what we really want
+is an `F[B]`, but there’s no way to get there from here. We can add `F`’s using
+`pure`, but we have no way to collapse multiple `F`’s into one.
+
+This ability to collapse multiple `F`’s is exactly the ability provided by the
+function `def flatten[A](ffa: F[F[A]]): F[A]`, and it should come as no surprise that
+an alternative definition of `Monad` can be given in terms of `flatten`:
+
+```scala
+trait Monad2[F[_]] extends Applicative[F] {
+  def flatten[A](ffa: F[F[A]]): F[A]
+}
+```
+  
+In fact, the canonical definition of monads in category theory is in terms of
+`pure`, `map`, and `flatten` (often called `η`, `T`, and `μ` in the
+mathematical literature). Scala uses an alternative formulation with `flatMap`
+instead of `flatten` since it is more convenient to use. However, sometimes it
+can be easier to think about `Monad` instances in terms of flatten, since it is
+a more “atomic” operation.
+
+(*Note*: You might hear some people claim that the definition in terms of
+`pure`, `map`, and `flatten` is the “math definition” and the definition in terms
+of `pure` and `flatMap` is something specific to Scala. In fact, both
+definitions were known in the mathematics community long before Scala picked up
+monads.)
+
+# Exercises
+
+- Implement `flatMap` in terms of `map` and `flatten`.
+- Now implement `flatten` and `map` in terms of `flatMap` and `pure`.
+
+# 5.4 Common utility functions
+
+Monads provide enough of an interface to provide a number of convenient utility
+functions, all implemented in terms of the basic `Monad` operations (`pure` and
+`flatMap` in particular). We have already seen one of them, namely, `flatten`.
+We also mention some other noteworthy ones here; implementing these utility
+functions oneself is a good exercise. For a more detailed guide to these
+functions, with commentary and example code, see Henk-Jan van Tuyl’s
+[tour](http://members.chello.nl/hjgtuyl/tourdemonad.html) of the Haskell
+`Control.Moand` module.
+
+- `def sequence[F[_]: Monad](fs: List[F[A]]): F[List[A]]` takes a list of
+  computations and combines them into one computation which collects a list of
+  their results. We talk about `sequence` in relation to `Monad`s as this is
+  often the convention, but it actually only needs an `Applicative` constraint
+  (see the exercise at the end of the Utility Functions section for
+  Applicative). Note that the actual type of `sequence` is more general, and
+  works over any `Traverse` rather than just lists; see the section on
+  `Traverse`.
+
+- `def replicateM[F[_]: Monad, A](n: Int, fa: F[A]): F[List[A]]` is simply a
+  combination of `List.fill` and `sequence`. Again note that it only really
+  needs an `Applicative` constraint.
+
+- `def mapM[F[_]: Monad, A, B](k: A => F[B])(as: List[a]): F[B]` maps its first
+  argument over the second, and `sequence`s the results. The `forM` function is
+  just `mapM` with its arguments reversed; it is called `forM` since it models
+  generalized `for` loops: the list `List[A]` provides the loop indices, and the
+  function `A => F[B]` specifies the "body" of the loop for each index. Again,
+  these functions actually work over any `Traverse`, not just lists, and they
+  can also be defined in terms of Applicative, not Monad: the analogue of mapM
+  for Applicative is called traverse.
+
+- `def extend[F[_]: Monad, A, B](f: A => F[B])(fa: F[A]): F[B]` is just `flatMap`
+  with its arguments reversed; sometimes this direction is more convenient
+  since it corresponds more closely to function application.
+
+- `def andThenM[F[_]: Monad, A, B, C](fab: A => F[B], fbc: B => F[C])(a: A):
+  F[C]` is sort of like function composition, but with an extra `F` on the result
+  type of each function, and the arguments swapped. We’ll have more to say
+  about this operation later. There is also a flipped variant, `composeM`.
+
+Many of these functions also have “underscored” variants, such as `sequence_`
+and `mapM_`; these variants throw away the results of the computations passed
+to them as arguments, using them only for their side effects.
+
+Other monadic functions which are occasionally useful include `filterM`,
+`zipWithM`, `foldM`, and `forever`.
+
+# 5.5 Laws
+
+There are several laws that instances of `Monad` should satisfy. The standard presentation is:
+
+```scala
+flatMap(pure(a))(k)                =  k a
+flatMap(m)(pure)                   =  m
+flatMap(m)(x => flatMap(k(x))9h))  =  flatMap(flatMap(m)(k))(h)
+```
+
+The first and second laws express the fact that `pure` behaves nicely: if we
+inject a value a into a monadic context with `pure`, and then bind to `k`, it
+is the same as just applying `k` to a in the first place; if we bind a
+computation `m` to `pure`, nothing changes. The third law essentially says that
+`flatMap` is associative, sort of.
+
+However, the presentation of the above laws, especially the third, is marred by
+the asymmetry of `flatMap`. It’s hard to look at the laws and see what they’re
+really saying. I prefer a much more elegant version of the laws, which is
+formulated in terms of `andThenM` ∗. Recall that `andThenM` “composes” two
+functions of type `A => F[B]` and `B => F[C]`. You can think of something of
+type `A => F[B]` (roughly) as a function from `A` to `B` which may also have
+some sort of effect in the context corresponding to `F`. `andThenM` lets us
+compose these “effectful functions”, and we would like to know what properties
+`andThenM` has. The monad laws reformulated in terms of `andThenM` are:
+
+```scala
+andThen(pure, g) = g
+andThen(g, pure) = g
+andThen(andThen(f, g), h) = andThen(f, andThen(g, h))
+```
+
+Ah, much better! The laws simply state that `pure` is the identity of
+`andThenM`, and that `andThenM` is associative.
+
+*Note*: ∗ As fans of category theory will note, these laws say precisely that
+functions of type `A => F[B]` are the arrows of a category with `andThenM` as
+composition! Indeed, this is known as the Kleisli category of the monad `F`. It
+will come up again when we discuss `Arrow`s.
+
+There is also a formulation of the monad laws in terms of fmap, return, and
+join; for a discussion of this formulation, see the [Haskell wikibook page on
+category theory](https://en.wikibooks.org/wiki/Haskell/Category_theory#The_third_and_fourth_laws).
+
+# Exercises
+
+- Given the definition `def andThenM[F[_]: Monad, A, B, C](g: A => F[B], h: B
+  => F[C])(a: A) = flatMap(g(a))(h)`, prove the equivalence of the above laws
+  and the usual monad laws.
+
+# `for` notation
+
+Scala’s special `for` notation supports an “imperative style” of programming by
+providing syntactic sugar for chains of monadic expressions. The genesis of the
+notation lies in realizing that something like `flatMap(a)(x => flatMap(b)(_ =>
+flatMap(c)(y => d)))` can be more readably written by putting successive
+computations on separate lines:
+
+```scala
+flatMap(a) { x =>
+flatMap(b) { _ => 
+flatMap(c) { y =>
+d } } }
+```
+
+This emphasizes that the overall computation consists of four computations `a`,
+`b`, `c`, and `d`, and that `x` is bound to the result of `a`, and `y` is bound
+to the result of `c` (`b`, `c`, and `d` are allowed to refer to `x`, and `d` is
+allowed to refer to `y` as well). From here it is not hard to imagine a nicer
+notation:
+
+```scala
+for { 
+  x <- a
+  _ <- b
+  y <- c
+  out <- d
+} yield out
+```
+
+This discussion should make clear that `for` notation is just syntactic sugar.
+
+*Note*: Very, very importantly, `for` notation desugars to the use of methods
+on values of type `F[X]` as opposed to function calls from the relevant `Monad`
+typeclass instance. This means that `for` *will not* work just because you've
+got a `Monad` instance in scope---you must implement `flatMap` and `map` in
+`F`'s class directly.
+
+Alternatively, you can use an implicit "syntax" class like the following
+
+```scala
+implicit class MonadOps[F[_]: Monad, A](fa: F[A]) {
+  private val tc = implicitly[Monad[F]]
+  def flatMap[B](k: A => F[B]): F[B] = tc.flatMap(fa)(k)
+  def map[B](f: A => B): F[B] = tc.map(f)
+}
+```
+
+A final note on intuition: `for` notation plays very strongly to the
+“computational context” point of view rather than the “container” point of
+view, since the binding notation `x <- m` is suggestive of “extracting” a
+single `x` from `m` and doing something with it. But `m` may represent some
+sort of a container, such as a list or a tree; the meaning of `x <- m` is
+entirely dependent on the implementation of `flatMap`. For example, if `m` is a
+list, `x <- m` actually means that `x` will take on each value from the list in
+turn. Scala calls `for` notation "for" notation to relate it back to the
+"container" intuition, and shows how the "computational context" intuition can
+be seen as a generalization of it.
+
+Sometimes, the full power of `Monad` is not needed to desugar `for`-notation. For example,
+
+```scala
+for {
+  x <- foo1
+  y <- foo2
+  z <- foo3
+} yield g(x)(y)(z)
+```
+
+would normally be desugared to `foo1.flatMap(x => foo2.flatMap(y => foo3.map(z
+=> g(x, y, z))))`, but this is equivalent to `ap(ap(ap(pure(g), foo1), foo2),
+foo3)`. Sometimes it is better to use the applicative syntax (or an equivalent
+one that's less messy due to using methods and infix notation) as (a) there are
+more valid `Applicative`s than `Monad`s and (b) `Applicative` operations can
+sometimes be more efficient or more parallelizable than `Monad` ones.
+
+For example, consider
+
+```scala
+def g(x: Int)(y: Int): F[Int] = ???
+
+// These could be expensive
+def bar: F[Int] = ???
+def baz: F[Int] = ???
+ 
+def foo: F[Int] = for {
+  x <- bar
+  y <- baz
+} g(x)(y)
+```
+
+`foo` definitely depends on the `Monad` instance of `F`, since the effects
+generated by the whole computation may depend (via `g`) on the `Int` outputs of
+`bar` and `baz`. However, `foo` can also be defined as
+
+```scala
+flatten(ap(ap(pure(g), bar), baz))
+```
+
+which may allow `bar` and `baz` to be computed in parallel, since they at least
+do not depend on each other.
+
+# 5.7 Further reading
+
+Philip Wadler was the first to propose using monads to structure functional
+programs. [His paper](http://homepages.inf.ed.ac.uk/wadler/topics/monads.html)
+is still a readable introduction to the subject.
+
+There are, of course, numerous monad tutorials of varying quality.
+
+A few of the best include Cale Gibbard’s [Monads as
+containers](https://wiki.haskell.org/Monads_as_Containers) and [Monads as
+computation](https://wiki.haskell.org/Monads_as_computation); Jeff Newbern’s
+[All About Monads](https://wiki.haskell.org/All_About_Monads), a comprehensive
+guide with lots of examples; and Dan Piponi’s [You Could Have Invented
+Monads!](http://blog.sigfpe.com/2006/08/you-could-have-invented-monads-and.html),
+which features great exercises. Even this is just a sampling; [the monad
+tutorials timeline](https://wiki.haskell.org/Monad_tutorials_timeline) is a
+more complete list. (All these monad tutorials have prompted parodies like
+[think of a monad](https://koweycode.blogspot.com/2007/01/think-of-monad.html)
+... as well as other kinds of backlash like [Monads! (and Why Monad Tutorials
+Are All
+Awful)](https://ahamsandwich.wordpress.com/2007/07/26/monads-and-why-monad-tutorials-are-all-awful/)
+or [Abstraction, intuition, and the “monad tutorial
+fallacy”](https://byorgey.wordpress.com/2009/01/12/abstraction-intuition-and-the-monad-tutorial-fallacy/).)
+
+Other good monad references which are not necessarily tutorials include
+[Henk-Jan van Tuyl’s tour](http://members.chello.nl/hjgtuyl/tourdemonad.html)
+of the functions in Control.Monad, [Dan Piponi’s field
+guide](http://blog.sigfpe.com/2006/10/monads-field-guide.html), Tim Newsham’s
+[What’s a Monad?](http://www.thenewsh.com/~newsham/haskell/monad.html), and
+Chris Smith's excellent article [Why Do Monads
+Matter?](https://cdsmith.wordpress.com/2012/04/18/why-do-monads-matter/). There
+are also many blog posts which have been written on various aspects of monads;
+a collection of links can be found under [Blog
+articles/Monads](https://wiki.haskell.org/Blog_articles/Monads).
+
+For help constructing monads from scratch, and for obtaining a "deep embedding"
+of monad operations suitable for use in, say, compiling a domain-specific
+language, see the [free monad in
+Cats](https://typelevel.org/cats/datatypes/freemonad.html).
+
+One of the quirks of the `Monad` class and the Scala type system is that it is
+not possible to straightforwardly declare `Monad` instances for types which
+require a class constraint on their data, even if they are monads from a
+mathematical point of view. For example, you can define a `Set` type which
+requires an `Ordered` constraint on its data (and uses an ordered tree as its
+private representation) so it cannot be easily made an instance of `Monad`. A
+solution to this problem was first [described by Eric
+Kidd](http://www.randomhacks.net.s3-website-us-east-1.amazonaws.com/2007/03/15/data-set-monad-haskell-macros/).
+
+There are many good reasons for eschewing `for` notation; in Haskell some have
+gone so far as to [consider it
+harmful](https://wiki.haskell.org/Do_notation_considered_harmful).
+
+Monads can be generalized in various ways; for an exposition of one
+possibility, see Robert Atkey’s paper on [parameterized
+monads](https://bentnib.org/paramnotions-jfp.pdf), or Dan Piponi’s [Beyond
+Monads](http://blog.sigfpe.com/2009/02/beyond-monads.html).
+
+For the categorically inclined, monads can be viewed as monoids ([From Monoids
+to Monads](http://blog.sigfpe.com/2008/11/from-monoids-to-monads.html)) and
+also as closure operators ([Triples and
+Closure](https://blog.plover.com/math/monad-closure.html)). Derek Elkins’
+article in [issue 13 of the
+Monad.Reader](https://wiki.haskell.org/wikiupload/8/85/TMR-Issue13.pdf)
+contains an exposition of the category-theoretic underpinnings of some of the
+standard Monad instances, such
+as State and Cont. Jonathan Hill and Keith Clarke have [an early
+paper](http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.53.6497)
+explaining the connection between monads as they arise in category theory and
+as used in functional programming. There is also a web page by Oleg Kiselyov
+explaining the [history of Haskell's IO
+monad](http://okmij.org/ftp/Computation/IO-monad-history.html).
+
+Links to many more research papers related to monads can be found under
+[Research papers/Monads and
+arrows](https://wiki.haskell.org/Research_papers/Monads_and_arrows).
