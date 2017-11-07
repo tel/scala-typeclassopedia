@@ -31,7 +31,7 @@ take a look at its definition.
 trait Monad[F[_]] extends Applicative[F] {
   def flatMap[A, B](fa: F[A])(k: A => F[B]): F[B]
 
-  def andThen[A, B](fa: F[A], fb: F[B]): F[B] = 
+  def seq[A, B](fa: F[A], fb: F[B]): F[B] = 
     flatMap(fa)(_ => fb)
 
   def ap[A, B](ff: F[A => B], fa: F[A]): F[B] =
@@ -39,21 +39,21 @@ trait Monad[F[_]] extends Applicative[F] {
 }
 ```
 
-*Note* "andThen" is a non-standard name. You might also call it "semicolon".
+*Note* "seq" is a non-standard name. You might also call it "semicolon".
 
 Let’s examine the methods in the `Monad` class one by one.
 
-We can see that `andThen` is a specialized version of `flatMap`, with a default
+We can see that `seq` is a specialized version of `flatMap`, with a default
 implementation given. It is only included in the type class declaration so that
-specific instances of `Monad` can override the default implementation of `andThen`
+specific instances of `Monad` can override the default implementation of `seq`
 with a more efficient one, if desired. Also, note that although 
 
 ```scala
-def andThen[A, B](_: F[A], n: F[B]) = n
+def seq[A, B](_: F[A], n: F[B]) = n
 ```
 
-would be a type-correct implementation of `andThen`, it would not correspond to
-the intended semantics: the intention is that `andThen(m, n)` ignores the
+would be a type-correct implementation of `seq`, it would not correspond to
+the intended semantics: the intention is that `seq(m, n)` ignores the
 *result* of `m`, but not its *effects*.
 
 The only really interesting thing to look at—and what makes `Monad` strictly
@@ -337,7 +337,7 @@ functions, with commentary and example code, see Henk-Jan van Tuyl’s
   with its arguments reversed; sometimes this direction is more convenient
   since it corresponds more closely to function application.
 
-- `def andThenM[F[_]: Monad, A, B, C](fab: A => F[B], fbc: B => F[C])(a: A):
+- `def andThen[F[_]: Monad, A, B, C](fab: A => F[B], fbc: B => F[C])(a: A):
   F[C]` is sort of like function composition, but with an extra `F` on the result
   type of each function, and the arguments swapped. We’ll have more to say
   about this operation later. There is also a flipped variant, `composeM`.
@@ -368,12 +368,12 @@ computation `m` to `pure`, nothing changes. The third law essentially says that
 However, the presentation of the above laws, especially the third, is marred by
 the asymmetry of `flatMap`. It’s hard to look at the laws and see what they’re
 really saying. I prefer a much more elegant version of the laws, which is
-formulated in terms of `andThenM` ∗. Recall that `andThenM` “composes” two
+formulated in terms of `andThen` ∗. Recall that `andThen` “composes” two
 functions of type `A => F[B]` and `B => F[C]`. You can think of something of
 type `A => F[B]` (roughly) as a function from `A` to `B` which may also have
-some sort of effect in the context corresponding to `F`. `andThenM` lets us
+some sort of effect in the context corresponding to `F`. `andThen` lets us
 compose these “effectful functions”, and we would like to know what properties
-`andThenM` has. The monad laws reformulated in terms of `andThenM` are:
+`andThen` has. The monad laws reformulated in terms of `andThen` are:
 
 ```scala
 andThen(pure, g) = g
@@ -382,10 +382,10 @@ andThen(andThen(f, g), h) = andThen(f, andThen(g, h))
 ```
 
 Ah, much better! The laws simply state that `pure` is the identity of
-`andThenM`, and that `andThenM` is associative.
+`andThen`, and that `andThen` is associative.
 
 *Note*: ∗ As fans of category theory will note, these laws say precisely that
-functions of type `A => F[B]` are the arrows of a category with `andThenM` as
+functions of type `A => F[B]` are the arrows of a category with `andThen` as
 composition! Indeed, this is known as the Kleisli category of the monad `F`. It
 will come up again when we discuss `Arrow`s.
 
@@ -395,7 +395,7 @@ category theory](https://en.wikibooks.org/wiki/Haskell/Category_theory#The_third
 
 # Exercises
 
-- Given the definition `def andThenM[F[_]: Monad, A, B, C](g: A => F[B], h: B
+- Given the definition `def andThen[F[_]: Monad, A, B, C](g: A => F[B], h: B
   => F[C])(a: A) = flatMap(g(a))(h)`, prove the equivalence of the above laws
   and the usual monad laws.
 
