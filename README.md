@@ -39,7 +39,7 @@ implementations of this typeclass in Scala.
 - [3 Functor](./contents/3_Functor.md)
 - [4 Applicative](./contents/4_Applicative.md)
 - [5 Monad](./contents/5_Monad.md)
-- 6 TailRec
+- [6 TailRec](./contents/6_TailRec.md)
 - 7 MonadFail
 - 8 Monad transformers
 - 9 MonadFix
